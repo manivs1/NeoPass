@@ -308,6 +308,40 @@ function extractCodingQuestion(isTyped = false) {
         testCasesText = 'No test cases found. Please check the page structure.';
     }
 
+    // Extract whitelist keywords from instruction cards
+    let whitelistText = '';
+    const instructionCards = document.querySelectorAll('div[aria-labelledby="instruction-card"]');
+    instructionCards.forEach(card => {
+        const header = card.querySelector('[aria-labelledby="instruction-header"]');
+        if (header && header.textContent.trim().toLowerCase().includes('whitelist')) {
+            const sets = card.querySelectorAll('[aria-labelledby="list"]');
+            sets.forEach(set => {
+                const setHeader = set.querySelector('[aria-labelledby="set-header"]');
+                const values = set.querySelectorAll('[aria-labelledby="list-value-card"]');
+                const keywords = Array.from(values).map(v => v.textContent.trim()).filter(Boolean);
+                if (keywords.length > 0) {
+                    const setName = setHeader ? setHeader.textContent.trim() : '';
+                    whitelistText += (setName ? setName + ' ' : '') + keywords.join(', ') + '\n';
+                }
+            });
+        }
+    });
+    whitelistText = whitelistText.trim();
+
+    // Extract header and footer snippet code from readonly editors
+    let headerSnippet = '';
+    let footerSnippet = '';
+    const headerEditorEl = document.querySelector('[aria-labelledby="editor-question"][id*="ttHeaderEditor"]');
+    const footerEditorEl = document.querySelector('[aria-labelledby="editor-question"][id*="ttFooterEditor"]');
+    if (headerEditorEl) {
+        const headerLines = headerEditorEl.querySelectorAll('.ace_line');
+        headerSnippet = Array.from(headerLines).map(line => line.textContent).join('\n').trim();
+    }
+    if (footerEditorEl) {
+        const footerLines = footerEditorEl.querySelectorAll('.ace_line');
+        footerSnippet = Array.from(footerLines).map(line => line.textContent).join('\n').trim();
+    }
+
     // Send data to background.js for querying
     chrome.runtime.sendMessage({
         action: 'extractData',
@@ -316,6 +350,9 @@ function extractCodingQuestion(isTyped = false) {
         inputFormat: inputFormatText,
         outputFormat: outputFormatText,
         testCases: testCasesText,
+        headerSnippet: headerSnippet,
+        footerSnippet: footerSnippet,
+        whitelist: whitelistText,
         isCoding: true,
         isTyped: isTyped
     }, (response) => {

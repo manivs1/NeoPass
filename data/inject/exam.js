@@ -9,12 +9,21 @@ if (typeof window.isMac === 'undefined') {
   let editor;
   let codeLines = [];
 
-  // Find the answer Ace editor on the page (mirrors the working console snippet)
+  // Find the answer Ace editor on the page (only the editable answer editor)
   function findAnswerEditor() {
+    // First try to find the specific answer editor by aria-labelledby
+    const answerEl = document.querySelector('[aria-labelledby="editor-answer"]');
+    if (answerEl) {
+      try {
+        return ace.edit(answerEl);
+      } catch(e) {}
+    }
+    // Fallback: find first non-readonly ACE editor
     const editors = document.querySelectorAll('.ace_editor');
     for (const el of editors) {
       try {
-        return ace.edit(el);
+        const ed = ace.edit(el);
+        if (!ed.getReadOnly()) return ed;
       } catch(e) {}
     }
     return null;

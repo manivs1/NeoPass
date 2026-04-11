@@ -1023,19 +1023,33 @@ function handleQueryResponseForIamNeoExamly(response, tabId, isMCQ = false, isHa
                     console.error('[worker.js] executeScript (typed) failed:', err);
                 });
             } else {
-                // Instant mode: inject directly into all Ace editors
+                // Instant mode: inject directly into the answer Ace editor only
                 chrome.scripting.executeScript({
                     target: { tabId: tabId },
                     func: function(code) {
-                        var editors = document.querySelectorAll('.ace_editor');
-                        editors.forEach(function(el) {
+                        // Only target the answer editor, not header/footer snippet editors
+                        var answerEl = document.querySelector('[aria-labelledby="editor-answer"]');
+                        if (answerEl) {
                             try {
-                                var ed = ace.edit(el);
+                                var ed = ace.edit(answerEl);
                                 ed.setValue(code);
                                 ed.clearSelection();
                                 ed.navigateFileEnd();
                             } catch(e) {}
-                        });
+                        } else {
+                            // Fallback: try all editors but skip readonly ones
+                            var editors = document.querySelectorAll('.ace_editor');
+                            editors.forEach(function(el) {
+                                try {
+                                    var ed = ace.edit(el);
+                                    if (!ed.getReadOnly()) {
+                                        ed.setValue(code);
+                                        ed.clearSelection();
+                                        ed.navigateFileEnd();
+                                    }
+                                } catch(e) {}
+                            });
+                        }
                     },
                     args: [cleanedCode],
                     world: 'MAIN'
@@ -1568,7 +1582,10 @@ Respond with ONLY the ${request.programmingLanguage} code:`;
                             (request.programmingLanguage ? `Solve Striclty Using This Programing Language:\n${request.programmingLanguage}` : '') +
                         (request.inputFormat ? `Input Format:\n${request.inputFormat}\n\n` : '') +
                         (request.outputFormat ? `Output Format:\n${request.outputFormat}\n\n` : '') +
-                        (request.testCases ? `Test Cases:\n${request.testCases}` : '');
+                        (request.testCases ? `Test Cases:\n${request.testCases}` : '') +
+                        (request.headerSnippet ? `\n\nHeader Snippet (pre-existing code before your answer, DO NOT include this in your response):\n${request.headerSnippet}` : '') +
+                        (request.footerSnippet ? `\n\nFooter Snippet (pre-existing code after your answer, DO NOT include this in your response):\n${request.footerSnippet}` : '') +
+                        (request.whitelist ? `\n\nWhitelisted Keywords (you MUST use these keywords/identifiers in your solution):\n${request.whitelist}` : '');
                     }
                 } else {
                     // MCQ handling with support for multiple choice
