@@ -1783,7 +1783,15 @@ async function handleChatMessage(message, sender) {
             return;
         }
 
-        const data = await response.json();
+        const responseText = await response.text();
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            // Server returned plain text instead of JSON — treat it as a direct response
+            sendChatResponse(sender.tab.id, responseText);
+            return;
+        }
 
         if (response.ok && data.success) {
             // Server automatically refreshes access token if it expired
