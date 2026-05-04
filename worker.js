@@ -1790,57 +1790,37 @@ async function handleChatMessage(message, sender) {
             console.log('✅ Access token auto-refreshed during chat request and stored');
         }
 
-        // Read the Vercel AI SDK data stream (pipeTextStreamToResponse format).
-        // Each line is either:
-        //   0:"text chunk"   — a text delta (JSON-encoded string after the "0:" prefix)
-        //   d:{...}          — finish metadata (ignored for display)
-        //   2:[...]          — data parts (ignored for display)
+        // Read the plain-text stream produced by pipeTextStreamToResponse.
+        // The server sends raw text deltas; each read() call yields one or more
+        // text chunks that are concatenated directly into the response.
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let accumulatedText = '';
-        // lineBuffer holds an incomplete (no trailing newline yet) line between read() calls
-        let lineBuffer = '';
         let receivedChunks = false;
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            lineBuffer += decoder.decode(value, { stream: true });
-
-            // Split on newlines; pop() keeps any trailing incomplete line in lineBuffer
-            const lines = lineBuffer.split('\n');
-            lineBuffer = lines.pop();
-
-            for (const line of lines) {
-                if (line.startsWith('0:')) {
-                    try {
-                        const chunk = JSON.parse(line.slice(2));
-                        accumulatedText += chunk;
-                        receivedChunks = true;
-                        // Send incremental streaming update to the chatbot UI
-                        chrome.tabs.sendMessage(sender.tab.id, {
-                            action: "updateChatHistory",
-                            role: "assistant",
-                            content: accumulatedText,
-                            isStreaming: true
-                        });
-                    } catch (e) {
-                        console.warn('[Chat] Failed to parse stream chunk:', e);
-                    }
-                }
+            const chunk = decoder.decode(value, { stream: true });
+            if (chunk) {
+                accumulatedText += chunk;
+                receivedChunks = true;
+                // Send incremental streaming update to the chatbot UI
+                chrome.tabs.sendMessage(sender.tab.id, {
+                    action: "updateChatHistory",
+                    role: "assistant",
+                    content: accumulatedText,
+                    isStreaming: true
+                });
             }
         }
 
-        // Handle any text remaining in the buffer after the stream closes
-        if (lineBuffer.startsWith('0:')) {
-            try {
-                const chunk = JSON.parse(lineBuffer.slice(2));
-                accumulatedText += chunk;
-                receivedChunks = true;
-            } catch (e) {
-                console.warn('[Chat] Failed to parse final stream chunk:', e);
-            }
+        // Flush any bytes remaining in the decoder after the stream closes
+        const finalChunk = decoder.decode();
+        if (finalChunk) {
+            accumulatedText += finalChunk;
+            receivedChunks = true;
         }
 
         // Finalise: send full accumulated text (isStreaming unset → chatbot.js closes the streaming div)
