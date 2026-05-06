@@ -1480,10 +1480,11 @@ async function getTokens() {
 }
 
 // Helper function to make authenticated request
-async function makeAuthenticatedRequest(url, method, token, body = null) {
+async function makeAuthenticatedRequest(url, method, token, body = null, extraHeaders = {}) {
     const headers = {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...extraHeaders
     };
 
     const options = {
@@ -1708,7 +1709,10 @@ async function handleChatMessage(message, sender) {
             chatEndpoint,
             "POST",
             accessToken,
-            requestBody
+            requestBody,
+            {
+                'X-Neo-Response-Format': 'text-stream'
+            }
         );
 
         // Server automatically handles token refresh if access token expired
@@ -1788,6 +1792,20 @@ async function handleChatMessage(message, sender) {
         if (newAccessToken) {
             await chrome.storage.local.set({ accessToken: newAccessToken });
             console.log('✅ Access token auto-refreshed during chat request and stored');
+        }
+
+        const responseContentType = (response.headers.get('content-type') || '').toLowerCase();
+
+        if (responseContentType.includes('application/json')) {
+            const data = await response.json();
+            const content = typeof data?.content === 'string' ? data.content : '';
+
+            if (content) {
+                sendChatResponse(sender.tab.id, content);
+            } else {
+                sendChatErrorResponse(sender.tab.id, 'No response received. Please try again.');
+            }
+            return;
         }
 
         // Read the plain-text stream produced by pipeTextStreamToResponse.
